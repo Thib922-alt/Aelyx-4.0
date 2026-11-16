@@ -1,75 +1,139 @@
 #include <eadk.h>
-#include <stdlib.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
-#include <stdio.h>
 
-const char eadk_app_name[] __attribute__((section(".rodata.eadk_app_name"))) = "App";
-const uint32_t eadk_api_level  __attribute__((section(".rodata.eadk_api_level"))) = 0;
+#define W 320
+#define H 222
 
-eadk_color_t random_color() {
-  return (eadk_color_t)eadk_random();
+#define WHITE 0xFFFF
+#define BLACK 0x0000
+#define BLUE  0x001F
+#define RED   0xF800
+#define GREY  0x7BEF
+
+typedef struct {
+    const char *title;
+    const char *content;
+} Course;
+
+// Données intégrées en dur
+static const Course courses[] = {
+    {"Electricite - Bases", "Loi d'Ohm : U = R x I\nI = U / R ; R = U / I\nPuissance : P = U x I\nEnergie : E = P x t\n1000 W x 2 h = 2 kWh\nVoltmetre : derivation\nAmperemetre : en serie\nOhmmetre : circuit hors tension"},
+    {"MELEC - Securite", "Disjoncteur : surintensites\nDifferentiel : desequilibre (fuite)\nFusible : element qui fond\nRespecter normes, EPI et consignes\nPas d'intervention sans autorisation"},
+    {"Composants & Reseaux", "Transfo : U2/U1 = N2/N1\nCondensateur : Q = C x U\nMoteur : Elec -> Mecanique\nAlternateur : Meca -> Elec\nContinu : sens constant\nAlternatif : evolue periodiquement"},
+    {"Mathematiques", "Pythagore : a2 + b2 = c2\nAffine : f(x) = ax + b\nLineaire : f(x) = ax\nPourcentage : x % de A = A * x / 100\nMoyenne = somme / effectif\nEtendue = max - min"},
+    {"Francais", "Metaphore : sans outil\nComparaison : outil (comme)\nPersonnification : humain\nHyperbole : exageration"},
+    {"Anglais", "Preterit : action terminee dans le passe\nReguliers : base + ed\nIrreguliers : forme propre\nExemple : I visited London"},
+    {"Histoire - Geo", "1789 : fin de monarchie absolue\nRevolution francaise\nChangement climatique : causes humaines\nMigrations climatiques et conflits"}
+};
+
+#define COURSES_COUNT (sizeof(courses) / sizeof(courses[0]))
+
+static void clear_screen(void) {
+    eadk_display_push_rect_uniform((eadk_rect_t){0, 0, W, H}, WHITE);
 }
 
-eadk_rect_t random_screen_rect() {
-  uint16_t x = eadk_random() % (EADK_SCREEN_WIDTH - 1);
-  uint16_t y = eadk_random() % (EADK_SCREEN_HEIGHT - 1);
-  uint16_t width = eadk_random() % (EADK_SCREEN_WIDTH - x);
-  uint16_t height = eadk_random() % (EADK_SCREEN_HEIGHT - y);
-  return (eadk_rect_t){x, y, width, height};
+// Fonction pour afficher du texte multiligne proprement
+static void draw_text(const char *text, int start_y) {
+    char line[50];
+    int line_idx = 0;
+    int y = start_y;
+    
+    for (int i = 0; text[i] != '\0'; i++) {
+        if (text[i] == '\n' || line_idx == 45) {
+            line[line_idx] = '\0';
+            eadk_display_draw_string(line, (eadk_point_t){5, y}, false, BLACK, WHITE);
+            y += 18;
+            line_idx = 0;
+            if (text[i] == '\n') continue;
+        }
+        line[line_idx++] = text[i];
+    }
+    if (line_idx > 0) {
+        line[line_idx] = '\0';
+        eadk_display_draw_string(line, (eadk_point_t){5, y}, false, BLACK, WHITE);
+    }
 }
 
-void draw_random_colorful_rectangles() {
-  eadk_display_push_rect_uniform(eadk_screen_rect, eadk_color_black);
-  for (int i=0; i<100; i++) {
-    eadk_display_push_rect_uniform(random_screen_rect(), random_color());
-  }
+static void show_course(int index) {
+    clear_screen();
+    
+    // En-tête
+    eadk_display_push_rect_uniform((eadk_rect_t){0, 0, W, 24}, RED);
+    eadk_display_draw_string(courses[index].title, (eadk_point_t){5, 5}, false, WHITE, RED);
+
+    // Contenu
+    draw_text(courses[index].content, 35);
+
+    // Pied de page
+    eadk_display_push_rect_uniform((eadk_rect_t){0, 200, W, 22}, GREY);
+    eadk_display_draw_string("BACK : Retour a la liste", (eadk_point_t){5, 203}, false, BLACK, GREY);
+
+    // Attente de la touche retour
+    while (1) {
+        eadk_keyboard_state_t keys = eadk_keyboard_scan();
+        if (keys & (1ULL << EADK_KEY_BACK)) {
+            break;
+        }
+        eadk_timing_msleep(50);
+    }
 }
 
-void draw_random_buffer() {
-  eadk_rect_t rect = {0, 0, 30, 30};
-  size_t bufferSize = rect.width*rect.height*sizeof(eadk_color_t);
-  eadk_color_t * pixels = (eadk_color_t *)malloc(bufferSize);
-  if (pixels == NULL) {
-    return;
-  }
-  memset(pixels, 0, bufferSize);
-  for (int i=0; i<rect.width*rect.height; i++) {
-    pixels[i] = random_color();
-  }
-  eadk_display_push_rect(rect, pixels);
-  free(pixels);
-}
+int main(void) {
+    int selected = 0;
+    bool redraw = true;
 
-void move_pointer() {
-  uint16_t size = 10;
-  eadk_rect_t cursor = {(EADK_SCREEN_WIDTH-size)/2, (EADK_SCREEN_HEIGHT-size)/2, size, size};
-  while (true) {
-    eadk_keyboard_state_t keyboard = eadk_keyboard_scan();
-    if (eadk_keyboard_key_down(keyboard, eadk_key_back)) {
-      return;
-    }
-    if (eadk_keyboard_key_down(keyboard, eadk_key_left) && cursor.x > 0) {
-      cursor.x -= 1;
-    }
-    if (eadk_keyboard_key_down(keyboard, eadk_key_up) && cursor.y > 0) {
-      cursor.y -= 1;
-    }
-    if (eadk_keyboard_key_down(keyboard, eadk_key_right) && cursor.x < EADK_SCREEN_WIDTH-size ) {
-      cursor.x += 1;
-    }
-    if (eadk_keyboard_key_down(keyboard, eadk_key_down) && cursor.y < EADK_SCREEN_HEIGHT-size) {
-      cursor.y += 1;
-    }
-    eadk_display_push_rect_uniform(cursor, random_color());
-    eadk_timing_msleep(20);
-  }
-}
+    while (1) {
+        if (redraw) {
+            clear_screen();
+            
+            // Titre du menu
+            eadk_display_push_rect_uniform((eadk_rect_t){0, 0, W, 24}, BLUE);
+            eadk_display_draw_string("AELYX V3 - COURS HORS LIGNE", (eadk_point_t){5, 5}, false, WHITE, BLUE);
 
-int main(int argc, char * argv[]) {
-  printf("External data : '%s'\n", eadk_external_data);
-  eadk_timing_msleep(3000);
-  draw_random_colorful_rectangles();
-  draw_random_buffer();
-  eadk_display_draw_string("Hello, world!", (eadk_point_t){0, 0}, true, eadk_color_black, eadk_color_white);
-  move_pointer();
+            // Affichage de la liste des cours
+            for (unsigned int i = 0; i < COURSES_COUNT; i++) {
+                eadk_color_t bg = (i == selected) ? BLUE : WHITE;
+                eadk_color_t fg = (i == selected) ? WHITE : BLACK;
+                
+                eadk_display_push_rect_uniform((eadk_rect_t){0, 30 + i * 20, W, 20}, bg);
+                eadk_display_draw_string(courses[i].title, (eadk_point_t){10, 32 + i * 20}, false, fg, bg);
+            }
+
+            // Pied de page
+            eadk_display_push_rect_uniform((eadk_rect_t){0, 200, W, 22}, GREY);
+            eadk_display_draw_string("HAUT/BAS : Choisir   OK : Ouvrir", (eadk_point_t){5, 203}, false, BLACK, GREY);
+            
+            redraw = false;
+        }
+
+        // Gestion des touches
+        eadk_keyboard_state_t keys = eadk_keyboard_scan();
+
+        if (keys & (1ULL << EADK_KEY_UP)) {
+            if (selected > 0) {
+                selected--;
+                redraw = true;
+            }
+            eadk_timing_msleep(150); // Anti-rebond
+        }
+        
+        if (keys & (1ULL << EADK_KEY_DOWN)) {
+            if (selected < COURSES_COUNT - 1) {
+                selected++;
+                redraw = true;
+            }
+            eadk_timing_msleep(150);
+        }
+        
+        if (keys & (1ULL << EADK_KEY_OK)) {
+            show_course(selected);
+            redraw = true;
+            eadk_timing_msleep(150);
+        }
+
+        eadk_timing_msleep(50);
+    }
+    return 0;
 }
